@@ -200,7 +200,17 @@ template RightShift(b, shift) {
     signal input x;
     signal output y;
 
-    // TODO
+    component x_n2b = Num2Bits(b);
+    x_n2b.in <== x;
+
+    component y_b2n = Bits2Num(b);
+    for (var i = 0; i < b - shift; i++) {
+        y_b2n.bits[i] <== x_n2b.bits[i+shift];
+    }
+    for (var i = b - shift; i < b; i++) {
+        y_b2n.bits[i] <== 0;
+    }
+    y <== y_b2n.out;
 }
 
 /*
@@ -262,7 +272,13 @@ template LeftShift(shift_bound) {
     signal input skip_checks;
     signal output y;
 
-    // TODO
+    component lt = LessThan(252);
+    lt.in[0] <== shift;
+    lt.in[1] <== shift_bound;
+
+    (1 - lt.out) * (1 - skip_checks) === 0;
+
+    y <== x << shift;
 }
 
 /*
