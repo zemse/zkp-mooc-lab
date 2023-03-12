@@ -331,7 +331,20 @@ template Normalize(k, p, P) {
     signal output m_out;
     assert(P > p);
 
-    // TODO
+    component msnzb = MSNZB(P+1);
+    msnzb.in <== m;
+    msnzb.skip_checks <== skip_checks;
+
+    var ell = 0;
+    var shift = 0;
+    for (var i = 0; i < P+1; i++) {
+        // msnzb.out[i] is 1 for just some single i, rest zero
+        ell += msnzb.one_hot[i] * i;
+        shift += msnzb.one_hot[i] * (1 << (P-i));
+    }
+    e_out <== e + ell - p;
+    m_out <== m * shift;
+
 }
 
 /*
