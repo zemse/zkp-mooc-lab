@@ -278,7 +278,18 @@ template LeftShift(shift_bound) {
 
     (1 - lt.out) * (1 - skip_checks) === 0;
 
-    y <== x << shift;
+    // y <==  (x << shift);
+
+    var exponent = 0;
+    component isEqual[shift_bound];
+    for (var i = 0; i < shift_bound; i++) {
+        isEqual[i] = IsEqual();
+        isEqual[i].in[0] <== i;
+        isEqual[i].in[1] <== shift;
+        exponent += isEqual[i].out * (1<<i);
+    }
+
+    y <== x * exponent;
 }
 
 /*
@@ -360,5 +371,87 @@ template FloatAdd(k, p) {
     signal output e_out;
     signal output m_out;
 
-    // TODO
+    var P = 2*p + 1;
+    var shift_bound = 252;
+    var less_than_bound = 252;
+    var skip_checks = 0;
+
+    assert(e[0] != 0 || m[0] == 0);
+    assert(m[0] == 0 || m[0] >= 1<<p);
+    assert(e[1] != 0 || m[1] == 0);
+    assert(m[1] == 0 || m[1] >= 1<<p);
+
+    component cwf[2];
+    for(var i = 0; i < 2; i++) {
+        cwf[i] = CheckWellFormedness(k, p);
+        cwf[i].e <== e[i];
+        cwf[i].m <== m[i];
+    }
+
+    component left_shift[2];
+    var mgn[2];
+     for(var i = 0; i < 2; i++) {
+        left_shift[i] = LeftShift(shift_bound);
+        left_shift[i].x <== e[i];
+        left_shift[i].shift <== p+1;
+        left_shift[i].skip_checks <== 1;
+        mgn[i] = left_shift[i].y + m[i];
+    }
+
+    component less_than = LessThan(less_than_bound);
+    less_than.in <== mgn;
+
+    component switcher_e = Switcher();
+    switcher_e.sel <== less_than.out;
+    switcher_e.L <== e[0];
+    switcher_e.R <== e[1];
+    signal e_alpha <== switcher_e.outL;
+    signal e_beta <== switcher_e.outR;
+    
+    component switcher_m = Switcher();
+    switcher_m.sel <== less_than.out;
+    switcher_m.L <== m[0];
+    switcher_m.R <== m[1];
+    signal m_alpha <== switcher_m.outL;
+    signal m_beta <== switcher_m.outR;
+
+    var e_diff = e_alpha - e_beta;
+
+    component e_diff_is_greater = LessThan(less_than_bound);
+    e_diff_is_greater.in[0] <== p + 1;
+    e_diff_is_greater.in[1] <== e_diff;
+
+    component e_alpha_is_zero = IsZero();
+    e_alpha_is_zero.in <== e_alpha;
+
+    component or = OR();
+    or.a <== e_diff_is_greater.out;
+    or.b <== e_alpha_is_zero.out;
+
+    component left_shift_2 = LeftShift(shift_bound);
+    left_shift_2.x <== m_alpha * (1 - or.out);
+    left_shift_2.shift <== e_diff;
+    left_shift_2.skip_checks <== or.out;
+
+    component normalized = Normalize(k, p, P);
+    normalized.e <== e_beta;
+    normalized.m <== left_shift_2.y + m_beta;
+    normalized.skip_checks <== or.out;
+
+    component round_and_check = RoundAndCheck(k, p, P);
+    round_and_check.e <== normalized.e_out * (1 - or.out);
+    round_and_check.m <== normalized.m_out * (1 - or.out);
+
+    component e_if = IfThenElse();
+    e_if.cond <== or.out;
+    e_if.L <== e_alpha;
+    e_if.R <== round_and_check.e_out;
+
+    component m_if = IfThenElse();
+    m_if.cond <== or.out;
+    m_if.L <== m_alpha;
+    m_if.R <== round_and_check.m_out;
+
+    e_out <== e_if.out;
+    m_out <== m_if.out;
 }
